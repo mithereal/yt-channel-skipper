@@ -33,19 +33,12 @@ function checkAndSkipVideo() {
             // Skip directly to the end of the video
             video.currentTime = video.duration; 
             
-            // Turn the playbar red
-            const playbar = document.querySelector('.ytp-play-progress');
-            if (playbar) playbar.classList.add('blocked-playbar');
         }
     }
 }
 
 // YouTube is a Single Page Application. Listen for its native navigation event.
 document.addEventListener('yt-navigate-finish', () => {
-    // Reset the playbar color for the new video
-    const playbar = document.querySelector('.ytp-play-progress');
-    if (playbar) playbar.classList.remove('blocked-playbar');
-    
     setTimeout(checkAndSkipVideo, 1500);
 });
 
@@ -94,7 +87,6 @@ const observer = new MutationObserver(() => {
                 if (!blockedChannels.includes(name)) {
                     blockedChannels.push(name);
                     chrome.storage.local.set({blockedChannels}, () => {
-                        alert(`Added "${name}" to blocklist.`);
                         checkAndSkipVideo();
                     });
                 }

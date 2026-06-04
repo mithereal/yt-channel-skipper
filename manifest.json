@@ -3,7 +3,7 @@
   "manifest_version": 3,
   "name": "YT Channel Skipper",
   "version": "1.0",
-  "description": "Auto-skips videos from blocked channels, turns the playbar red, and adds a block button to the 3-dots menu.",
+  "description": "Auto-skips videos from blocked channels and adds a block button to the 3-dots menu.",
   "permissions": ["storage"],
   "action": {
     "default_popup": "options.html"
@@ -12,7 +12,6 @@
     {
       "matches": ["*://*.youtube.com/*"],
       "js": ["content.js"],
-      "css": ["styles.css"],
       "run_at": "document_end"
     }
   ]
