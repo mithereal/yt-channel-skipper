@@ -1,0 +1,5 @@
+
+/* Turns the YouTube playbar red when triggered */
+.ytp-play-progress.blocked-playbar {
+  background: #ff0000 !important;
+}
