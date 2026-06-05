@@ -1,0 +1,11 @@
+{
+  "blockedChannels": [
+    "NASASpaceflight"
+  ],
+  "fallbackChannels": [],
+  "runConfig": {
+    "enabled": true,
+    "end": "13:00",
+    "start": "22:30"
+  }
+}
