@@ -2,11 +2,14 @@ let blockedChannels = [];
 let fallbackChannels = [];
 let alwaysSkipLiveChannels = [];
 let runConfig = { enabled: false, start: "22:00", end: "06:00" };
+let isNavigatingToRandom = false;
+let blockedTags = [];
 
 // Load settings from Chrome storage
-chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
+chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
     blockedChannels = result.blockedChannels || [];
     fallbackChannels = result.fallbackChannels || [];
+    blockedTags = result.blockedTags || [];
     alwaysSkipLiveChannels = result.alwaysSkipLiveChannels || [];
     runConfig = result.runConfig || { enabled: false, start: "22:00", end: "06:00" };
 });
@@ -17,6 +20,7 @@ chrome.storage.onChanged.addListener((changes) => {
     if (changes.fallbackChannels) fallbackChannels = changes.fallbackChannels.newValue || [];
     if (changes.alwaysSkipLiveChannels) alwaysSkipLiveChannels = changes.alwaysSkipLiveChannels.newValue || [];
     if (changes.runConfig) runConfig = changes.runConfig.newValue || runConfig;
+    if (changes.blockedTags) blockedTags = changes.blockedTags.newValue || [];
 });
 
 // Helper function to check if the current time falls within the runnable hours
@@ -55,26 +59,40 @@ function redirectToFallbackChannel() {
 
 // Scrapes the channel page for long-form videos and picks one completely at random
 function playRandomChannelVideo() {
-    if (!window.location.pathname.includes('/videos')) return;
+    // Break out if we are not on the videos tab or already executing a click
+    if (!window.location.pathname.includes('/videos') || isNavigatingToRandom) return;
 
-    setTimeout(() => {
-        const elements = document.querySelectorAll('ytd-rich-grid-media a#video-title-link, ytd-grid-video-renderer a#video-title');
+    // Expanded selector coverage targeting both grid titles, list items, and standard thumbnails
+    const elements = document.querySelectorAll([
+        'a#video-title-link',
+        'ytd-grid-video-renderer a#video-title',
+        'ytd-rich-grid-media a[href*="/watch?v="]',
+        'ytd-rich-video-thumbnail a[href*="/watch?v="]'
+    ].join(','));
 
-        // Filter out any link that points to a Short (/shorts/)
-        const longFormVideos = Array.from(elements).filter(el => {
-            const href = el.getAttribute('href') || '';
-            return !href.includes('/shorts/');
-        });
+    // Filter out any link that points to a Short (/shorts/) or lacks a valid watch parameter
+    const longFormVideos = Array.from(elements).filter(el => {
+        const href = el.getAttribute('href') || '';
+        return !href.includes('/shorts/') && href.includes('/watch?v=');
+    });
 
-        if (longFormVideos.length > 0) {
-            const randomIndex = Math.floor(Math.random() * longFormVideos.length);
-            const selectedVideo = longFormVideos[randomIndex];
+    if (longFormVideos.length > 0) {
+        // Activate lock immediately before taking action
+        isNavigatingToRandom = true;
 
-            if (selectedVideo) {
-                selectedVideo.click();
-            }
+        const randomIndex = Math.floor(Math.random() * longFormVideos.length);
+        const selectedVideo = longFormVideos[randomIndex];
+
+        if (selectedVideo) {
+            console.log('[Skipper] Found grid items! Autoloading random selection:', selectedVideo.getAttribute('href'));
+
+            // Bring element into frame focus to guarantee pointer event clearance
+            selectedVideo.scrollIntoView({ block: 'center' });
+
+            // Dispatch a native click event to ensure SPF navigation framework catches it
+            selectedVideo.click();
         }
-    }, 1500);
+    }
 }
 
 function checkAndSkipVideo() {
@@ -84,12 +102,20 @@ function checkAndSkipVideo() {
     }
 
     const channelElement = document.querySelector('ytd-video-owner-renderer ytd-channel-name yt-formatted-string a');
+    const descriptionElement = document.querySelector('#description-inline-expander, ytd-text-inline-expander');
+
     if (!channelElement) {
         setTimeout(checkAndSkipVideo, 1000);
         return;
     }
 
     const channelName = channelElement.textContent.trim();
+    const descriptionText = descriptionElement ? descriptionElement.textContent.toLowerCase() : "";
+    // Check if channel is blocked OR description contains any blocked tags
+        const hasBlockedTag = blockedTags.some(tag => {
+            const cleanTag = tag.startsWith('#') ? tag.toLowerCase() : `#${tag.toLowerCase()}`;
+            return descriptionText.includes(cleanTag);
+        });
 
     // Check live state structures
     const isLive = document.querySelector('.ytp-live, .badged-player-livestream-icon, [data-is-live="true"]');
@@ -101,7 +127,7 @@ function checkAndSkipVideo() {
         return;
     }
 
-    if (blockedChannels.includes(channelName)) {
+    if (blockedChannels.includes(channelName) || hasBlockedTag) {
         if (isWithinRunnableHours() && liveIndicator) {
             redirectToFallbackChannel();
             return;
@@ -127,15 +153,16 @@ function getChannelHandle() {
 
 // Listen for YouTube Single Page Application navigation events
 document.addEventListener('yt-navigate-finish', () => {
-    setTimeout(checkAndSkipVideo, 1500);
+    isNavigatingToRandom = false;
+    setTimeout(checkAndSkipVideo, 1000);
 });
 
-// Periodic observer checks to handle page refreshes or hard routing directly to a /videos index
+// High-frequency periodic observer checks to intercept dynamic lazy loading
 setInterval(() => {
-    if (window.location.pathname.includes('/videos')) {
+    if (window.location.pathname.includes('/videos') && !isNavigatingToRandom) {
         playRandomChannelVideo();
     }
-}, 3000);
+}, 500); // Check every 500ms instead of 3000ms for snappy, seamless redirection
 
 // Base inline CSS layout matching native 3-dot options
 const customButtonStyles = `

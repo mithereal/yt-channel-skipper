@@ -42,7 +42,7 @@ function createSquare(val, groupClass) {
 
 // Read settings out of storage
 function loadSettings() {
-    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
+    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
         if (result.blockedChannels) {
             document.getElementById('channelList').value = result.blockedChannels.join('\n');
         }
@@ -52,7 +52,7 @@ function loadSettings() {
         if (result.alwaysSkipLiveChannels) {
             document.getElementById('alwaysSkipLiveList').value = result.alwaysSkipLiveChannels.join('\n');
         }
-
+        if (result.blockedTags) document.getElementById('tagList').value = result.blockedTags.join('\n');
         const config = result.runConfig || { enabled: false, start: "22:00", end: "06:00" };
         document.getElementById('enableTime').checked = config.enabled;
 
@@ -92,6 +92,7 @@ document.getElementById('saveBtn').addEventListener('click', () => {
     // Split text input, sanitize by removing any explicit leading '@' characters, and drop empty lines
     const fallbackList = document.getElementById('fallbackList').value.split('\n').map(c => c.trim().replace(/^@/, '')).filter(c => c.length > 0);
     const alwaysSkipLiveList = document.getElementById('alwaysSkipLiveList').value.split('\n').map(c => c.trim()).filter(c => c.length > 0);
+    const tagList = document.getElementById('tagList').value.split('\n').map(t => t.trim()).filter(t => t.length > 0);
 
     const startH = getSelectedValue('start-hour', '22');
     const startM = getSelectedValue('start-min', '00');
@@ -108,6 +109,7 @@ document.getElementById('saveBtn').addEventListener('click', () => {
         blockedChannels: blockedList,
         fallbackChannels: fallbackList,
         runConfig: runConfig,
+        blockedTags: tagList,
         alwaysSkipLiveChannels: alwaysSkipLiveList
     }, () => {
         showStatus('Saved successfully!');
@@ -116,10 +118,11 @@ document.getElementById('saveBtn').addEventListener('click', () => {
 
 // --- EXPORT LOGIC ---
 document.getElementById('exportBtn').addEventListener('click', () => {
-    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
+    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
         const backupData = {
             blockedChannels: result.blockedChannels || [],
             fallbackChannels: result.fallbackChannels || [],
+            blockedTags: result.blockedTags || [],
             runConfig: result.runConfig || { enabled: false, start: "22:00", end: "06:00" },
             alwaysSkipLiveChannels: result.alwaysSkipLiveChannels || []
         };
@@ -140,6 +143,7 @@ document.getElementById('importBtn').addEventListener('click', () => {
     document.getElementById('fileInput').click();
 });
 
+
 document.getElementById('fileInput').addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -152,6 +156,7 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
                 chrome.storage.local.set({
                     blockedChannels: importedData.blockedChannels || [],
                     fallbackChannels: importedData.fallbackChannels || [],
+                    blockedTags: importedData.blockedTags || [],
                     runConfig: importedData.runConfig || { enabled: false, start: "22:00", end: "06:00" },
                     alwaysSkipLiveChannels: importedData.alwaysSkipLiveChannels || []
                 }, () => {

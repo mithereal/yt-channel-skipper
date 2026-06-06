@@ -39,14 +39,20 @@
         }
 
         .content {
-          padding: 20px;
+          padding-left: 20%;
+          padding-right: 20%;
           color: white;
           width: 100%;
-          max-width: 420px;
+        }
+
+        .title{
+        text-align: center;    /* Centers the text horizontally */
+        padding: 20px 0;
         }
     </style>
 </head>
 <body>
+<div class="title"><h1>Youtube Channel Skipper</h1></div>
 <div class="flex-container">
     <div class="content">
         <div class="config-group">
@@ -79,6 +85,10 @@
         <h3>Always Skip Live Channels</h3>
         <p>Add one channel name per line. These will always redirect to fallback channels when live, ignoring time restrictions.</p>
         <textarea id="alwaysSkipLiveList" spellcheck="false" placeholder="Channel Name 1&#10;Channel Name 2"></textarea>
+
+        <h3>Blocked Description #Tags</h3>
+        <p>Add one hashtag per line (e.g., #shorts or #gaming).</p>
+        <textarea id="tagList" spellcheck="false" placeholder="#shorts&#10;#spoilers"></textarea>
 
         <button id="saveBtn">Save Configurations</button>
 
