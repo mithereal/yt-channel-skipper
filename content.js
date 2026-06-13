@@ -4,14 +4,18 @@ let alwaysSkipLiveChannels = [];
 let runConfig = { enabled: false, start: "22:00", end: "06:00" };
 let isNavigatingToRandom = false;
 let blockedTags = [];
+let allowedLanguages = ['en'];
+let useBrowserLanguage = false;
 
 // Load settings from Chrome storage
-chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
+chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
     blockedChannels = result.blockedChannels || [];
     fallbackChannels = result.fallbackChannels || [];
     blockedTags = result.blockedTags || [];
     alwaysSkipLiveChannels = result.alwaysSkipLiveChannels || [];
     runConfig = result.runConfig || { enabled: false, start: "22:00", end: "06:00" };
+    allowedLanguages = result.allowedLanguages || ['en'];
+    useBrowserLanguage = result.useBrowserLanguage || false;
 });
 
 // Update runtime settings instantly on changes
@@ -21,6 +25,8 @@ chrome.storage.onChanged.addListener((changes) => {
     if (changes.alwaysSkipLiveChannels) alwaysSkipLiveChannels = changes.alwaysSkipLiveChannels.newValue || [];
     if (changes.runConfig) runConfig = changes.runConfig.newValue || runConfig;
     if (changes.blockedTags) blockedTags = changes.blockedTags.newValue || [];
+    if (changes.allowedLanguages) allowedLanguages = changes.allowedLanguages.newValue || ['en'];
+    if (changes.useBrowserLanguage) useBrowserLanguage = changes.useBrowserLanguage.newValue || false;
 });
 
 // Helper function to check if the current time falls within the runnable hours
@@ -111,11 +117,25 @@ function checkAndSkipVideo() {
 
     const channelName = channelElement.textContent.trim();
     const descriptionText = descriptionElement ? descriptionElement.textContent.toLowerCase() : "";
+
     // Check if channel is blocked OR description contains any blocked tags
-        const hasBlockedTag = blockedTags.some(tag => {
-            const cleanTag = tag.startsWith('#') ? tag.toLowerCase() : `#${tag.toLowerCase()}`;
-            return descriptionText.includes(cleanTag);
-        });
+    const hasBlockedTag = blockedTags.some(tag => {
+        const cleanTag = tag.startsWith('#') ? tag.toLowerCase() : `#${tag.toLowerCase()}`;
+        return descriptionText.includes(cleanTag);
+    });
+
+    // Extract DOM head metadata context to parse the video's uploaded language code
+    const langMeta = document.querySelector('meta[itemprop="inLanguage"]');
+    let isLanguageBlocked = false;
+
+    if (langMeta && allowedLanguages.length > 0) {
+        const videoLangCode = langMeta.getAttribute('content')?.split('-')[0].toLowerCase();
+        const cleanAllowedLangs = allowedLanguages.map(l => l.split('-')[0].toLowerCase().trim());
+
+        if (videoLangCode && !cleanAllowedLangs.includes(videoLangCode)) {
+            isLanguageBlocked = true;
+        }
+    }
 
     // Check live state structures
     const isLive = document.querySelector('.ytp-live, .badged-player-livestream-icon, [data-is-live="true"]');
@@ -127,12 +147,21 @@ function checkAndSkipVideo() {
         return;
     }
 
-    if (blockedChannels.includes(channelName) || hasBlockedTag) {
-        if (isWithinRunnableHours() && liveIndicator) {
-            redirectToFallbackChannel();
-            return;
+    if (blockedChannels.includes(channelName) || hasBlockedTag || isLanguageBlocked) {
+        if (liveIndicator) {
+            // Channel and Tag schedules maintain conditional timeline parameters
+            if ((blockedChannels.includes(channelName) || hasBlockedTag) && isWithinRunnableHours()) {
+                redirectToFallbackChannel();
+                return;
+            }
+            // Language mismatches flag live feeds instantly regardless of active clock hours
+            if (isLanguageBlocked) {
+                redirectToFallbackChannel();
+                return;
+            }
         }
 
+        // Fast-forward normal video player to trigger autoplay flow
         const video = document.querySelector('video');
         if (video) {
             video.currentTime = video.duration || 999999;

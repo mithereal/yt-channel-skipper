@@ -46,8 +46,8 @@
         }
 
         .title{
-        text-align: center;    /* Centers the text horizontally */
-        padding: 20px 0;
+          text-align: center;    /* Centers the text horizontally */
+          padding: 20px 0;
         }
     </style>
 </head>
@@ -89,6 +89,15 @@
         <h3>Blocked Description #Tags</h3>
         <p>Add one hashtag per line (e.g., #shorts or #gaming).</p>
         <textarea id="tagList" spellcheck="false" placeholder="#shorts&#10;#spoilers"></textarea>
+
+        <h3>Allowed Languages</h3>
+        <p>Restrict playback to specific speech tracks, one language per line (e.g., en).</p>
+
+        <label style="display: flex; align-items: center; gap: 6px; font-weight: bold; font-size: 13px; cursor: pointer; margin-bottom: 10px;">
+            <input type="checkbox" id="useBrowserLanguage"> Use Browser Language (<span id="detectedLang" style="color: #ff4e4e; font-family: monospace;">--</span>)
+        </label>
+
+        <textarea id="allowedLanguagesList" spellcheck="false" placeholder="en&#10;es&#10;ja"></textarea>
 
         <button id="saveBtn">Save Configurations</button>
 

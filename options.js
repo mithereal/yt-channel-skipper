@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     buildGrids();
     loadSettings();
-    setupInteractiveBlocklist();
 });
+
 
 // Programmatically populate the matrix systems
 function buildGrids() {
@@ -42,7 +42,7 @@ function createSquare(val, groupClass) {
 
 // Read settings out of storage
 function loadSettings() {
-    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
+    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
         if (result.blockedChannels) {
             document.getElementById('channelList').value = result.blockedChannels.join('\n');
         }
@@ -52,7 +52,33 @@ function loadSettings() {
         if (result.alwaysSkipLiveChannels) {
             document.getElementById('alwaysSkipLiveList').value = result.alwaysSkipLiveChannels.join('\n');
         }
-        if (result.blockedTags) document.getElementById('tagList').value = result.blockedTags.join('\n');
+        if (result.blockedTags) {
+            document.getElementById('tagList').value = result.blockedTags.join('\n');
+        }
+
+        // Display current browser language code in the UI label badge
+        const browserLangCode = navigator.language.split('-')[0].toLowerCase();
+        const detectedLangSpan = document.getElementById('detectedLang');
+        if (detectedLangSpan) {
+            detectedLangSpan.textContent = browserLangCode;
+        }
+
+        const useBrowserLang = result.useBrowserLanguage || false;
+        document.getElementById('useBrowserLanguage').checked = useBrowserLang;
+
+        // Set initial visibility and values for the language list asset
+        const langTextbox = document.getElementById('allowedLanguagesList');
+        if (langTextbox) {
+            if (useBrowserLang) {
+                langTextbox.style.display = 'none';
+                langTextbox.value = browserLangCode;
+            } else {
+                langTextbox.style.display = 'block';
+                const allowedLangs = result.allowedLanguages || ['en'];
+                langTextbox.value = allowedLangs.join('\n');
+            }
+        }
+
         const config = result.runConfig || { enabled: false, start: "22:00", end: "06:00" };
         document.getElementById('enableTime').checked = config.enabled;
 
@@ -85,14 +111,59 @@ function showStatus(message, isError = false) {
     setTimeout(() => status.textContent = '', 2000);
 }
 
-// --- SAVE LOGIC ---
+
+// --- RUNTIME INTERACTIVE EVENT LISTENERS ---
+
+// Live Checkbox Sync Listener
+document.getElementById('useBrowserLanguage').addEventListener('change', (e) => {
+    const langTextbox = document.getElementById('allowedLanguagesList');
+    const isChecked = e.target.checked;
+
+    if (!langTextbox) return;
+
+    if (isChecked) {
+        langTextbox.style.display = 'none';
+        const browserLangCode = navigator.language.split('-')[0].toLowerCase();
+        langTextbox.value = browserLangCode;
+
+        chrome.storage.local.set({
+            useBrowserLanguage: true,
+            allowedLanguages: [browserLangCode]
+        }, () => {
+            showStatus('Browser language override enabled!');
+        });
+    } else {
+        langTextbox.style.display = 'block';
+        chrome.storage.local.get(['allowedLanguages'], (result) => {
+            const allowedLangs = result.allowedLanguages || ['en'];
+            langTextbox.value = allowedLangs.join('\n');
+
+            chrome.storage.local.set({
+                useBrowserLanguage: false,
+                allowedLanguages: allowedLangs
+            }, () => {
+                showStatus('Manual configuration restored!');
+            });
+        });
+    }
+});
+
+// Save Settings Action Listener
 document.getElementById('saveBtn').addEventListener('click', () => {
     const blockedList = document.getElementById('channelList').value.split('\n').map(c => c.trim()).filter(c => c.length > 0);
-
-    // Split text input, sanitize by removing any explicit leading '@' characters, and drop empty lines
     const fallbackList = document.getElementById('fallbackList').value.split('\n').map(c => c.trim().replace(/^@/, '')).filter(c => c.length > 0);
     const alwaysSkipLiveList = document.getElementById('alwaysSkipLiveList').value.split('\n').map(c => c.trim()).filter(c => c.length > 0);
     const tagList = document.getElementById('tagList').value.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+
+    const useBrowserLang = document.getElementById('useBrowserLanguage').checked;
+    let allowedLangsList = [];
+
+    if (useBrowserLang) {
+        allowedLangsList = [navigator.language.split('-')[0].toLowerCase()];
+    } else {
+        const langTextbox = document.getElementById('allowedLanguagesList');
+        allowedLangsList = langTextbox ? langTextbox.value.split('\n').map(l => l.trim()).filter(l => l.length > 0) : ['en'];
+    }
 
     const startH = getSelectedValue('start-hour', '22');
     const startM = getSelectedValue('start-min', '00');
@@ -110,21 +181,25 @@ document.getElementById('saveBtn').addEventListener('click', () => {
         fallbackChannels: fallbackList,
         runConfig: runConfig,
         blockedTags: tagList,
-        alwaysSkipLiveChannels: alwaysSkipLiveList
+        alwaysSkipLiveChannels: alwaysSkipLiveList,
+        allowedLanguages: allowedLangsList,
+        useBrowserLanguage: useBrowserLang
     }, () => {
         showStatus('Saved successfully!');
     });
 });
 
-// --- EXPORT LOGIC ---
+// Configuration Export Logic Listener
 document.getElementById('exportBtn').addEventListener('click', () => {
-    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels'], (result) => {
+    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
         const backupData = {
             blockedChannels: result.blockedChannels || [],
             fallbackChannels: result.fallbackChannels || [],
             blockedTags: result.blockedTags || [],
             runConfig: result.runConfig || { enabled: false, start: "22:00", end: "06:00" },
-            alwaysSkipLiveChannels: result.alwaysSkipLiveChannels || []
+            alwaysSkipLiveChannels: result.alwaysSkipLiveChannels || [],
+            allowedLanguages: result.allowedLanguages || ['en'],
+            useBrowserLanguage: result.useBrowserLanguage || false
         };
 
         const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -138,11 +213,10 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     });
 });
 
-// --- IMPORT LOGIC ---
+// Configuration Import Engine Listeners
 document.getElementById('importBtn').addEventListener('click', () => {
     document.getElementById('fileInput').click();
 });
-
 
 document.getElementById('fileInput').addEventListener('change', (event) => {
     const file = event.target.files[0];
@@ -158,7 +232,9 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
                     fallbackChannels: importedData.fallbackChannels || [],
                     blockedTags: importedData.blockedTags || [],
                     runConfig: importedData.runConfig || { enabled: false, start: "22:00", end: "06:00" },
-                    alwaysSkipLiveChannels: importedData.alwaysSkipLiveChannels || []
+                    alwaysSkipLiveChannels: importedData.alwaysSkipLiveChannels || [],
+                    allowedLanguages: importedData.allowedLanguages || ['en'],
+                    useBrowserLanguage: importedData.useBrowserLanguage || false
                 }, () => {
                     document.querySelectorAll('.square').forEach(el => el.classList.remove('selected'));
                     loadSettings();
