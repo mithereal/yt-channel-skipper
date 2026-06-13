@@ -4,14 +4,16 @@ let alwaysSkipLiveChannels = [];
 let runConfig = { enabled: false, start: "22:00", end: "06:00" };
 let isNavigatingToRandom = false;
 let blockedTags = [];
+let blockedWords = [];
 let allowedLanguages = ['en'];
 let useBrowserLanguage = false;
 
 // Load settings from Chrome storage
-chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
+chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'blockedWords', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
     blockedChannels = result.blockedChannels || [];
     fallbackChannels = result.fallbackChannels || [];
     blockedTags = result.blockedTags || [];
+    blockedWords = result.blockedWords || [];
     alwaysSkipLiveChannels = result.alwaysSkipLiveChannels || [];
     runConfig = result.runConfig || { enabled: false, start: "22:00", end: "06:00" };
     allowedLanguages = result.allowedLanguages || ['en'];
@@ -25,6 +27,7 @@ chrome.storage.onChanged.addListener((changes) => {
     if (changes.alwaysSkipLiveChannels) alwaysSkipLiveChannels = changes.alwaysSkipLiveChannels.newValue || [];
     if (changes.runConfig) runConfig = changes.runConfig.newValue || runConfig;
     if (changes.blockedTags) blockedTags = changes.blockedTags.newValue || [];
+    if (changes.blockedWords) blockedWords = changes.blockedWords.newValue || [];
     if (changes.allowedLanguages) allowedLanguages = changes.allowedLanguages.newValue || ['en'];
     if (changes.useBrowserLanguage) useBrowserLanguage = changes.useBrowserLanguage.newValue || false;
 });
@@ -118,10 +121,15 @@ function checkAndSkipVideo() {
     const channelName = channelElement.textContent.trim();
     const descriptionText = descriptionElement ? descriptionElement.textContent.toLowerCase() : "";
 
-    // Check if channel is blocked OR description contains any blocked tags
+    // Check if description contains any blocked hashtags
     const hasBlockedTag = blockedTags.some(tag => {
         const cleanTag = tag.startsWith('#') ? tag.toLowerCase() : `#${tag.toLowerCase()}`;
         return descriptionText.includes(cleanTag);
+    });
+
+    // Check if description contains any blocked words or phrases (Case-insensitive matching)
+    const hasBlockedWord = blockedWords.some(word => {
+        return word.trim() && descriptionText.includes(word.toLowerCase().trim());
     });
 
     // Extract DOM head metadata context to parse the video's uploaded language code
@@ -147,10 +155,10 @@ function checkAndSkipVideo() {
         return;
     }
 
-    if (blockedChannels.includes(channelName) || hasBlockedTag || isLanguageBlocked) {
+    if (blockedChannels.includes(channelName) || hasBlockedTag || hasBlockedWord || isLanguageBlocked) {
         if (liveIndicator) {
-            // Channel and Tag schedules maintain conditional timeline parameters
-            if ((blockedChannels.includes(channelName) || hasBlockedTag) && isWithinRunnableHours()) {
+            // Channel, Tag, and Word schedules maintain conditional timeline parameters
+            if ((blockedChannels.includes(channelName) || hasBlockedTag || hasBlockedWord) && isWithinRunnableHours()) {
                 redirectToFallbackChannel();
                 return;
             }
@@ -224,6 +232,10 @@ const observer = new MutationObserver(() => {
             blockBtn.onmouseenter = () => blockBtn.style.backgroundColor = 'var(--yt-spec-badge-chip-background, rgba(128, 128, 128, 0.15))';
             blockBtn.onmouseleave = () => blockBtn.style.backgroundColor = 'transparent';
 
+            // Isolate layout state calculation engines from tracking target interactions
+            blockBtn.onmousedown = (e) => e.stopPropagation();
+            blockBtn.onpointerdown = (e) => e.stopPropagation();
+
             blockBtn.onclick = (e) => {
                 e.stopPropagation();
                 if (!blockedChannels.includes(channelName)) {
@@ -249,6 +261,10 @@ const observer = new MutationObserver(() => {
 
             fallbackBtn.onmouseenter = () => fallbackBtn.style.backgroundColor = 'var(--yt-spec-badge-chip-background, rgba(128, 128, 128, 0.15))';
             fallbackBtn.onmouseleave = () => fallbackBtn.style.backgroundColor = 'transparent';
+
+            // Isolate layout state calculation engines from tracking target interactions
+            fallbackBtn.onmousedown = (e) => e.stopPropagation();
+            fallbackBtn.onpointerdown = (e) => e.stopPropagation();
 
             fallbackBtn.onclick = (e) => {
                 e.stopPropagation();

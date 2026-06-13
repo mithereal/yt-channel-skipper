@@ -42,7 +42,7 @@ function createSquare(val, groupClass) {
 
 // Read settings out of storage
 function loadSettings() {
-    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
+    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'blockedWords', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
         if (result.blockedChannels) {
             document.getElementById('channelList').value = result.blockedChannels.join('\n');
         }
@@ -54,6 +54,9 @@ function loadSettings() {
         }
         if (result.blockedTags) {
             document.getElementById('tagList').value = result.blockedTags.join('\n');
+        }
+        if (result.blockedWords) {
+            document.getElementById('blockedWordsList').value = result.blockedWords.join('\n');
         }
 
         // Display current browser language code in the UI label badge
@@ -154,6 +157,7 @@ document.getElementById('saveBtn').addEventListener('click', () => {
     const fallbackList = document.getElementById('fallbackList').value.split('\n').map(c => c.trim().replace(/^@/, '')).filter(c => c.length > 0);
     const alwaysSkipLiveList = document.getElementById('alwaysSkipLiveList').value.split('\n').map(c => c.trim()).filter(c => c.length > 0);
     const tagList = document.getElementById('tagList').value.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+    const wordsList = document.getElementById('blockedWordsList').value.split('\n').map(w => w.trim()).filter(w => w.length > 0);
 
     const useBrowserLang = document.getElementById('useBrowserLanguage').checked;
     let allowedLangsList = [];
@@ -181,6 +185,7 @@ document.getElementById('saveBtn').addEventListener('click', () => {
         fallbackChannels: fallbackList,
         runConfig: runConfig,
         blockedTags: tagList,
+        blockedWords: wordsList,
         alwaysSkipLiveChannels: alwaysSkipLiveList,
         allowedLanguages: allowedLangsList,
         useBrowserLanguage: useBrowserLang
@@ -191,11 +196,12 @@ document.getElementById('saveBtn').addEventListener('click', () => {
 
 // Configuration Export Logic Listener
 document.getElementById('exportBtn').addEventListener('click', () => {
-    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
+    chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'blockedWords', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'useBrowserLanguage'], (result) => {
         const backupData = {
             blockedChannels: result.blockedChannels || [],
             fallbackChannels: result.fallbackChannels || [],
             blockedTags: result.blockedTags || [],
+            blockedWords: result.blockedWords || [],
             runConfig: result.runConfig || { enabled: false, start: "22:00", end: "06:00" },
             alwaysSkipLiveChannels: result.alwaysSkipLiveChannels || [],
             allowedLanguages: result.allowedLanguages || ['en'],
@@ -231,6 +237,7 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
                     blockedChannels: importedData.blockedChannels || [],
                     fallbackChannels: importedData.fallbackChannels || [],
                     blockedTags: importedData.blockedTags || [],
+                    blockedWords: importedData.blockedWords || [],
                     runConfig: importedData.runConfig || { enabled: false, start: "22:00", end: "06:00" },
                     alwaysSkipLiveChannels: importedData.alwaysSkipLiveChannels || [],
                     allowedLanguages: importedData.allowedLanguages || ['en'],
