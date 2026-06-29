@@ -4,16 +4,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const addButton = document.getElementById('add-button');
     const channelsList = document.getElementById('channels-list');
     const optionsGear = document.getElementById('options-gear');
+    const toggleLabel = document.getElementById('toggleStateLabel');
+ 
+
+  const iconPaths = {
+    on: {
+      "16": "icon-16.png",
+      "32": "icon-32.png"
+    },
+    off: {
+      "16": "icon-16-off.png",
+      "32": "icon-32-off.png"
+    }
+  };
 
     // Load saved settings using normalized global extension keys including alwaysSkipLiveChannels
     chrome.storage.local.get({ extensionEnabled: true, blockedChannels: [], alwaysSkipLiveChannels: [] }, (data) => {
-        toggle.checked = data.extensionEnabled;
+        chrome.action.setIcon({ path: data.extensionEnabled ? iconPaths.on : iconPaths.off });
         updateAndRender(data.blockedChannels, data.alwaysSkipLiveChannels);
     });
 
     // Save the toggle state change across components
     toggle.addEventListener('change', () => {
         chrome.storage.local.set({ extensionEnabled: toggle.checked });
+	chrome.action.setIcon({ path: toggle.checked ? iconPaths.on : iconPaths.off });
     });
 
     // Option gear click listener to open full-width options tab panel
@@ -108,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.onChanged.addListener((changes) => {
         if (changes.extensionEnabled) {
             toggle.checked = changes.extensionEnabled.newValue !== false;
+         	chrome.action.setIcon({ path: toggle.checked ? iconPaths.on : iconPaths.off });
         }
         if (changes.blockedChannels || changes.alwaysSkipLiveChannels) {
             chrome.storage.local.get({ blockedChannels: [], alwaysSkipLiveChannels: [] }, (data) => {
