@@ -9,7 +9,25 @@ let blockedTags = [];
 let blockedWords = [];
 let allowedLanguages = ['en'];
 
-// --- STORAGE SYNC ---
+// --- 1. TARGETED COMMAND LISTENER ---
+chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === "RUN_CORE_LOGIC") {
+        checkAndSkipVideo();
+    }
+});
+
+// --- 2. VIDEO STATUS REPORTER ---
+const video = document.querySelector('video');
+if (video) {
+    const notify = (isPlaying) => {
+        chrome.runtime.sendMessage({ action: "UPDATE_STATUS", playing: isPlaying });
+    };
+    video.addEventListener('play', () => notify(true));
+    video.addEventListener('pause', () => notify(false));
+    if (!video.paused) notify(true);
+}
+
+// --- 3. STORAGE SYNC ---
 chrome.storage.onChanged.addListener((changes) => {
     if (changes.blockedChannels) blockedChannels = changes.blockedChannels.newValue || blockedChannels;
     if (changes.fallbackChannels) fallbackChannels = changes.fallbackChannels.newValue || fallbackChannels;
@@ -21,7 +39,7 @@ chrome.storage.onChanged.addListener((changes) => {
     if (changes.extensionEnabled) extensionEnabled = changes.extensionEnabled.newValue !== undefined ? changes.extensionEnabled.newValue : extensionEnabled;
 });
 
-// --- UTILITIES ---
+// --- 4. CORE UTILITIES ---
 const isExtensionActive = () => extensionEnabled && isWithinRunnableHours();
 
 const randomWait = (min = 2000, max = 5000) =>
@@ -38,7 +56,7 @@ async function waitForElements(selector, timeout = 10000) {
 }
 
 function isWithinRunnableHours() {
-    if (!runConfig.enabled) return true; // If scheduling is disabled, consider hours "active"
+    if (!runConfig.enabled) return true;
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const [startH, startM] = runConfig.start.split(':').map(Number);
@@ -50,25 +68,37 @@ function isWithinRunnableHours() {
         : (currentMinutes >= startMinutes || currentMinutes <= endMinutes);
 }
 
-// --- CORE LOGIC ---
+// --- 5. AUTOPLAY MONITOR (RESTORED) ---
+const randomDelay = (min = 2000, max = 8000) =>
+    Math.floor(Math.random() * (max - min + 1) + min);
+
+function startAutoplayMonitor() {
+    const observer = new MutationObserver(() => {
+        if (!isExtensionActive()) return;
+
+        const autoplaySwitch = document.querySelector('.ytp-autonav-toggle-button');
+
+        if (autoplaySwitch && autoplaySwitch.getAttribute('aria-checked') === 'false') {
+            // Instead of clicking immediately, wait for a random interval
+            const waitTime = randomDelay(3000, 10000); // Wait between 3 to 10 seconds
+
+            console.log(`[Skipper] Autoplay detected OFF. Activating in ${waitTime}ms`);
+
+            setTimeout(() => {
+                // Re-verify it's still OFF before clicking
+                if (autoplaySwitch.getAttribute('aria-checked') === 'false') {
+                    autoplaySwitch.click();
+                }
+            }, waitTime);
+        }
+    });
+
+// --- 6. SKIPPER & NAVIGATION LOGIC ---
 function isSubscribed() {
     const subButton = document.querySelector('ytd-subscribe-button-renderer paper-button');
     if (!subButton) return false;
     const label = subButton.getAttribute('aria-label')?.toLowerCase() || "";
     return subButton.hasAttribute('subscribed') || label.includes('unsubscribe');
-}
-
-function startAutoplayMonitor() {
-    const observer = new MutationObserver(() => {
-        if (!isExtensionActive()) return;
-        const autoplaySwitch = document.querySelector('.ytp-autonav-toggle-button');
-        // Logic: Turn OFF autoplay if it's currently ON
-        if (autoplaySwitch && autoplaySwitch.getAttribute('aria-checked') === 'true') {
-            autoplaySwitch.click();
-        }
-    });
-    const player = document.querySelector('#movie_player');
-    if (player) observer.observe(player, { attributes: true, subtree: true });
 }
 
 async function redirectToFallbackChannel() {
@@ -82,16 +112,6 @@ async function redirectToFallbackChannel() {
     setTimeout(() => { isRedirecting = false; }, 5000);
 }
 
-// --- INITIALIZATION ---
-chrome.storage.local.get(['blockedChannels', 'fallbackChannels', 'blockedTags', 'blockedWords', 'runConfig', 'alwaysSkipLiveChannels', 'allowedLanguages', 'extensionEnabled'], (result) => {
-    if (result.blockedChannels) blockedChannels = result.blockedChannels;
-    if (result.fallbackChannels) fallbackChannels = result.fallbackChannels;
-    if (result.runConfig) runConfig = result.runConfig;
-    if (result.extensionEnabled !== undefined) extensionEnabled = result.extensionEnabled;
-    startAutoplayMonitor();
-});
-
-// --- NAVIGATION & BLOCKING ---
 async function playRandomChannelVideo() {
     if (!isExtensionActive() || isNavigatingToRandom || isRedirecting) return;
     const videos = await waitForElements('a#video-title-link, ytd-rich-grid-media a[href*="/watch?v="]');
@@ -104,40 +124,53 @@ async function playRandomChannelVideo() {
 }
 
 async function checkAndSkipVideo() {
-    if (!isExtensionActive() || isRedirecting || !window.location.pathname.includes('/watch')) {
-        if (isExtensionActive() && (window.location.pathname === '/' || window.location.pathname.includes('/videos'))) playRandomChannelVideo();
+    if (!isExtensionActive() || isRedirecting) return;
+
+    if (window.location.pathname === '/' || window.location.pathname.includes('/videos')) {
+        await playRandomChannelVideo();
         return;
     }
 
-    // IGNORE if subscribed
-    if (isSubscribed()) return;
+    if (window.location.pathname.includes('/watch')) {
+        if (isSubscribed()) return;
+        const channelElement = document.querySelector('ytd-video-owner-renderer ytd-channel-name yt-formatted-string a');
+        if (!channelElement) return;
 
-    const channelElement = document.querySelector('ytd-video-owner-renderer ytd-channel-name yt-formatted-string a');
-    if (!channelElement) { setTimeout(checkAndSkipVideo, 1000); return; }
-
-    if (blockedChannels.includes(channelElement.textContent.trim())) {
-        if (document.querySelector('.ytp-live')) {
-            await redirectToFallbackChannel();
-        } else {
-            const video = document.querySelector('video');
-            if (video) video.currentTime = video.duration || 999999;
+        if (blockedChannels.includes(channelElement.textContent.trim())) {
+            if (document.querySelector('.ytp-live') && alwaysSkipLiveChannels.includes(channelElement.textContent.trim())) {
+                await redirectToFallbackChannel();
+            } else {
+                const video = document.querySelector('video');
+                if (video) video.currentTime = video.duration || 999999;
+            }
         }
     }
 }
 
-document.addEventListener('yt-navigate-finish', () => {
-    isNavigatingToRandom = false;
-    isRedirecting = false;
-    setTimeout(checkAndSkipVideo, 1500);
+// --- 7. INITIALIZATION & OBSERVERS ---
+chrome.storage.local.get([
+    'blockedChannels', 'fallbackChannels', 'alwaysSkipLiveChannels', 'blockedTags',
+    'blockedWords', 'runConfig', 'allowedLanguages', 'extensionEnabled'
+], (result) => {
+    blockedChannels = result.blockedChannels || [];
+    fallbackChannels = result.fallbackChannels || [];
+    alwaysSkipLiveChannels = result.alwaysSkipLiveChannels || [];
+    blockedTags = result.blockedTags || [];
+    blockedWords = result.blockedWords || [];
+    runConfig = result.runConfig || runConfig;
+    allowedLanguages = result.allowedLanguages || ['en'];
+    extensionEnabled = result.extensionEnabled !== undefined ? result.extensionEnabled : true;
+
+    // Start the monitor
+    startAutoplayMonitor();
+
+    document.addEventListener('yt-navigate-finish', () => {
+        isNavigatingToRandom = false;
+        isRedirecting = false;
+        setTimeout(checkAndSkipVideo, 1500);
+    });
 });
 
-setInterval(() => {
-    if (isExtensionActive() && !isRedirecting && (window.location.pathname === '/' || window.location.pathname.includes('/videos'))) {
-        playRandomChannelVideo();
-    }
-}, 5000);
-
-// --- MENU INJECTION ---
 const observer = new MutationObserver(() => {
     const popup = document.querySelector('ytd-menu-popup-renderer #items');
     if (popup && popup.offsetParent !== null && !document.getElementById('custom-block-btn')) {
@@ -147,7 +180,12 @@ const observer = new MutationObserver(() => {
             btn.id = 'custom-block-btn';
             btn.setAttribute('style', `cursor: pointer; padding: 10px 16px;`);
             btn.innerHTML = `<span>🚫</span> Block Channel`;
-            btn.onclick = (e) => { e.stopPropagation(); blockedChannels.push(channelElement.textContent.trim()); chrome.storage.local.set({ blockedChannels }); document.body.click(); };
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                blockedChannels.push(channelElement.textContent.trim());
+                chrome.storage.local.set({ blockedChannels });
+                document.body.click();
+            };
             popup.appendChild(btn);
         }
     }
